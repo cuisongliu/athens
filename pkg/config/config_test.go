@@ -16,7 +16,7 @@ import (
 
 func testConfigFile(t *testing.T) (testConfigFile string) {
 	testConfigFile = filepath.Join("..", "..", "config.dev.toml")
-	if err := os.Chmod(testConfigFile, 0700); err != nil {
+	if err := os.Chmod(testConfigFile, 0o700); err != nil {
 		t.Fatalf("%s\n", err)
 	}
 	return testConfigFile
@@ -79,23 +79,24 @@ func TestEnvOverrides(t *testing.T) {
 		TimeoutConf: TimeoutConf{
 			Timeout: 30,
 		},
-		StorageType:     "minio",
-		GlobalEndpoint:  "mytikas.gomods.io",
-		Port:            ":7000",
-		EnablePprof:     false,
-		PprofPort:       ":3001",
-		BasicAuthUser:   "testuser",
-		BasicAuthPass:   "testpass",
-		ForceSSL:        true,
-		ValidatorHook:   "testhook.io",
-		PathPrefix:      "prefix",
-		NETRCPath:       "/test/path/.netrc",
-		HGRCPath:        "/test/path/.hgrc",
-		Storage:         &Storage{},
-		GoBinaryEnvVars: []string{"GOPROXY=direct"},
-		SingleFlight:    &SingleFlight{},
-		RobotsFile:      "robots.txt",
-		Index:           &Index{},
+		StorageType:      "minio",
+		GlobalEndpoint:   "mytikas.gomods.io",
+		HomeTemplatePath: "/tmp/athens/home.html",
+		Port:             ":7000",
+		EnablePprof:      false,
+		PprofPort:        ":3001",
+		BasicAuthUser:    "testuser",
+		BasicAuthPass:    "testpass",
+		ForceSSL:         true,
+		ValidatorHook:    "testhook.io",
+		PathPrefix:       "prefix",
+		NETRCPath:        "/test/path/.netrc",
+		HGRCPath:         "/test/path/.hgrc",
+		Storage:          &Storage{},
+		GoBinaryEnvVars:  []string{"GOPROXY=direct"},
+		SingleFlight:     &SingleFlight{},
+		RobotsFile:       "robots.txt",
+		Index:            &Index{},
 	}
 
 	envVars := getEnvMap(expConf)
@@ -107,6 +108,7 @@ func TestEnvOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Env override failed: %v", err)
 	}
+
 	compareConfigs(conf, expConf, t, Storage{}, SingleFlight{})
 }
 
@@ -253,12 +255,13 @@ func TestParseExampleConfig(t *testing.T) {
 			LockConfig:       DefaultRedisLockConfig(),
 		},
 		Etcd: &Etcd{Endpoints: "localhost:2379,localhost:22379,localhost:32379"},
+		GCP:  DefaultGCPConfig(),
 	}
 
 	expConf := &Config{
 		GoEnv:           "development",
 		LogLevel:        "debug",
-		LogFormat:       "json",
+		LogFormat:       "plain",
 		GoBinary:        "go",
 		GoGetWorkers:    10,
 		ProtocolWorkers: 30,
@@ -269,6 +272,7 @@ func TestParseExampleConfig(t *testing.T) {
 		StorageType:      "memory",
 		NetworkMode:      "strict",
 		GlobalEndpoint:   "http://localhost:3001",
+		HomeTemplatePath: "/var/lib/athens/home.html",
 		Port:             ":3000",
 		EnablePprof:      false,
 		PprofPort:        ":3001",
@@ -303,7 +307,6 @@ func TestParseExampleConfig(t *testing.T) {
 }
 
 func getEnvMap(config *Config) map[string]string {
-
 	envVars := map[string]string{
 		"GO_ENV":                  config.GoEnv,
 		"GO_BINARY_PATH":          config.GoBinary,
@@ -322,6 +325,7 @@ func getEnvMap(config *Config) map[string]string {
 	envVars["BASIC_AUTH_USER"] = config.BasicAuthUser
 	envVars["BASIC_AUTH_PASS"] = config.BasicAuthPass
 	envVars["PROXY_FORCE_SSL"] = strconv.FormatBool(config.ForceSSL)
+	envVars["ATHENS_HOME_TEMPLATE_PATH"] = config.HomeTemplatePath
 	envVars["ATHENS_PROXY_VALIDATOR"] = config.ValidatorHook
 	envVars["ATHENS_PATH_PREFIX"] = config.PathPrefix
 	envVars["ATHENS_NETRC_PATH"] = config.NETRCPath
@@ -388,6 +392,8 @@ func getEnvMap(config *Config) map[string]string {
 		} else if singleFlight.Etcd != nil {
 			envVars["ATHENS_SINGLE_FLIGHT_TYPE"] = "etcd"
 			envVars["ATHENS_ETCD_ENDPOINTS"] = singleFlight.Etcd.Endpoints
+		} else if singleFlight.GCP != nil {
+			envVars["ATHENS_GCP_STALE_THRESHOLD"] = strconv.Itoa(singleFlight.GCP.StaleThreshold)
 		}
 	}
 	return envVars
@@ -411,7 +417,7 @@ func Test_checkFilePerms(t *testing.T) {
 	}
 
 	incorrectPerms := []os.FileMode{0o777, 0o610, 0o660}
-	var incorrectFiles = make([]string, len(incorrectPerms))
+	incorrectFiles := make([]string, len(incorrectPerms))
 
 	for i := range incorrectPerms {
 		f, err := tempFile(incorrectPerms[i])
@@ -423,7 +429,7 @@ func Test_checkFilePerms(t *testing.T) {
 	}
 
 	correctPerms := []os.FileMode{0o600, 0o400, 0o644}
-	var correctFiles = make([]string, len(correctPerms))
+	correctFiles := make([]string, len(correctPerms))
 
 	for i := range correctPerms {
 		f, err := tempFile(correctPerms[i])
